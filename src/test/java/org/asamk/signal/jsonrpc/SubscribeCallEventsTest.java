@@ -175,6 +175,14 @@ class SubscribeCallEventsTest {
         }
 
         @Override
+        public void setProxy(org.asamk.signal.manager.api.ProxyConfig proxy) {
+        }
+
+        @Override
+        public void removeProxy() {
+        }
+
+        @Override
         public void unregister() {
         }
 

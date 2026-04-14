@@ -58,13 +58,13 @@ public class SignalDependencies {
 
     private final Object LOCK = new Object();
 
-    private final ServiceEnvironmentConfig serviceEnvironmentConfig;
+    private ServiceEnvironmentConfig serviceEnvironmentConfig;
     private final String userAgent;
     private final CredentialsProvider credentialsProvider;
     private final SignalServiceDataStore dataStore;
     private final ExecutorService executor;
     private final SignalSessionLock sessionLock;
-    private final ProxyConfig accountProxy;
+    private ProxyConfig accountProxy;
 
     private boolean allowStories = true;
 
@@ -142,6 +142,61 @@ public class SignalDependencies {
         }
         if (this.unauthenticatedSignalWebSocket != null) {
             this.unauthenticatedSignalWebSocket.forceNewWebSocket();
+        }
+    }
+
+    /**
+     * Swap the proxy configuration for this account at runtime.
+     * <p>
+     * Closes the existing {@link PushServiceSocket} and forces both
+     * {@link SignalWebSocket} instances to reconnect, so the next network call
+     * exits via the new proxy. Cached API/operation objects that depend on the
+     * service configuration are cleared so the next access lazily rebuilds them
+     * against the updated {@link ServiceEnvironmentConfig}.
+     */
+    public void reconfigureProxy(
+            final ServiceEnvironmentConfig newServiceEnvironmentConfig,
+            final ProxyConfig newAccountProxy
+    ) {
+        synchronized (LOCK) {
+            this.serviceEnvironmentConfig = newServiceEnvironmentConfig;
+            this.accountProxy = newAccountProxy;
+
+            if (this.pushServiceSocket != null) {
+                this.pushServiceSocket.close();
+                this.pushServiceSocket = null;
+            }
+            this.accountManager = null;
+            this.accountApi = null;
+            this.rateLimitChallengeApi = null;
+            this.cdsApi = null;
+            this.usernameApi = null;
+            this.groupsV2Api = null;
+            this.registrationApi = null;
+            this.linkDeviceApi = null;
+            this.storageServiceApi = null;
+            this.certificateApi = null;
+            this.attachmentApi = null;
+            this.callingApi = null;
+            this.messageApi = null;
+            this.keysApi = null;
+            this.groupsV2Operations = null;
+            this.clientZkOperations = null;
+            this.messageReceiver = null;
+            this.messageSender = null;
+            this.profileService = null;
+            this.profileApi = null;
+            this.secureValueRecovery = null;
+
+            if (this.libSignalNetwork != null) {
+                setSignalNetworkProxy(this.libSignalNetwork);
+            }
+            if (this.authenticatedSignalWebSocket != null) {
+                this.authenticatedSignalWebSocket.forceNewWebSocket();
+            }
+            if (this.unauthenticatedSignalWebSocket != null) {
+                this.unauthenticatedSignalWebSocket.forceNewWebSocket();
+            }
         }
     }
 

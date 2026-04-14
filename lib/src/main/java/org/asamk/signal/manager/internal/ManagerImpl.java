@@ -53,6 +53,7 @@ import org.asamk.signal.manager.api.PhoneNumberSharingMode;
 import org.asamk.signal.manager.api.PinLockMissingException;
 import org.asamk.signal.manager.api.PinLockedException;
 import org.asamk.signal.manager.api.Profile;
+import org.asamk.signal.manager.api.ProxyConfig;
 import org.asamk.signal.manager.api.RateLimitException;
 import org.asamk.signal.manager.api.ReceiveConfig;
 import org.asamk.signal.manager.api.Recipient;
@@ -164,6 +165,7 @@ public class ManagerImpl implements Manager {
     private SignalAccount account;
     private final SignalDependencies dependencies;
     private final Context context;
+    private final Function<ProxyConfig, ServiceEnvironmentConfig> serviceEnvironmentConfigBuilder;
 
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
@@ -183,7 +185,19 @@ public class ManagerImpl implements Manager {
             ServiceEnvironmentConfig serviceEnvironmentConfig,
             String userAgent
     ) {
+        this(account, pathConfig, accountFileUpdater, serviceEnvironmentConfig, userAgent, null);
+    }
+
+    public ManagerImpl(
+            SignalAccount account,
+            PathConfig pathConfig,
+            AccountFileUpdater accountFileUpdater,
+            ServiceEnvironmentConfig serviceEnvironmentConfig,
+            String userAgent,
+            Function<ProxyConfig, ServiceEnvironmentConfig> serviceEnvironmentConfigBuilder
+    ) {
         this.account = account;
+        this.serviceEnvironmentConfigBuilder = serviceEnvironmentConfigBuilder;
 
         final var sessionLock = new ReentrantSignalSessionLock();
         this.dependencies = new SignalDependencies(serviceEnvironmentConfig,
@@ -445,6 +459,25 @@ public class ManagerImpl implements Manager {
             throw new NotPrimaryDeviceException();
         }
         context.getAccountHelper().finishChangeNumber(newNumber, verificationCode, pin);
+    }
+
+    @Override
+    public void setProxy(final ProxyConfig proxy) {
+        account.setProxy(proxy);
+        if (serviceEnvironmentConfigBuilder == null) {
+            logger.warn("Per-account proxy persisted but cannot be hot-swapped: "
+                    + "ManagerImpl was constructed without a serviceEnvironmentConfigBuilder. "
+                    + "The new proxy will take effect after the daemon restarts.");
+            return;
+        }
+        final var newConfig = serviceEnvironmentConfigBuilder.apply(proxy);
+        dependencies.reconfigureProxy(newConfig, proxy);
+        logger.info("Reconfigured account network stack with new proxy: {}", proxy);
+    }
+
+    @Override
+    public void removeProxy() {
+        setProxy(null);
     }
 
     @Override

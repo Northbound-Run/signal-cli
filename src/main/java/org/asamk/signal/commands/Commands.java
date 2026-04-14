@@ -40,6 +40,7 @@ public class Commands {
         addCommand(new RemoveContactCommand());
         addCommand(new RemoveDeviceCommand());
         addCommand(new RemovePinCommand());
+        addCommand(new RemoveProxyCommand());
         addCommand(new RemoteDeleteCommand());
         addCommand(new SendAdminDeleteCommand());
         addCommand(new SendCommand());
@@ -56,6 +57,7 @@ public class Commands {
         addCommand(new SendTypingCommand());
         addCommand(new SendUnpinMessageCommand());
         addCommand(new SetPinCommand());
+        addCommand(new SetProxyCommand());
         addCommand(new StartCallCommand());
         addCommand(new SubmitRateLimitChallengeCommand());
         addCommand(new StartChangeNumberCommand());

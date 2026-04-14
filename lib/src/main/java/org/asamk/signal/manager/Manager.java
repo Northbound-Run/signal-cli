@@ -34,6 +34,7 @@ import org.asamk.signal.manager.api.Pair;
 import org.asamk.signal.manager.api.PendingAdminApprovalException;
 import org.asamk.signal.manager.api.PinLockMissingException;
 import org.asamk.signal.manager.api.PinLockedException;
+import org.asamk.signal.manager.api.ProxyConfig;
 import org.asamk.signal.manager.api.RateLimitException;
 import org.asamk.signal.manager.api.ReceiveConfig;
 import org.asamk.signal.manager.api.Recipient;
@@ -146,6 +147,18 @@ public interface Manager extends Closeable {
             String verificationCode,
             String pin
     ) throws IncorrectPinException, PinLockedException, IOException, NotPrimaryDeviceException, PinLockMissingException;
+
+    /**
+     * Persist a proxy configuration on the account and rebuild the network stack
+     * so subsequent calls exit via the new proxy. Pass {@code null} to clear it
+     * (or use {@link #removeProxy()} for symmetry with the CLI command).
+     */
+    void setProxy(ProxyConfig proxy);
+
+    /**
+     * Clear the per-account proxy. Equivalent to {@code setProxy(null)}.
+     */
+    void removeProxy();
 
     void unregister() throws IOException;
 

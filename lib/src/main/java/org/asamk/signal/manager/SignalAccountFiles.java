@@ -134,7 +134,8 @@ public class SignalAccountFiles {
                 pathConfig,
                 new AccountFileUpdaterImpl(accountsStore, accountPath),
                 buildServiceEnvironmentConfig(account.getProxy()),
-                userAgent);
+                userAgent,
+                this::buildServiceEnvironmentConfig);
 
         try {
             manager.checkAccountState();
