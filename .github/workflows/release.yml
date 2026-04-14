@@ -10,7 +10,7 @@ permissions:
 
 env:
   IMAGE_NAME: signal-cli
-  IMAGE_REGISTRY_HOST: ghcr.io
+  IMAGE_REGISTRY: ghcr.io/northbound-run
   REGISTRY_USER: ${{ github.actor }}
   REGISTRY_PASSWORD: ${{ github.token }}
 
@@ -185,9 +185,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
-      - name: Resolve GHCR namespace
-        id: ghcr_namespace
-        run: echo "owner=$(echo \"${GITHUB_REPOSITORY_OWNER}\" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
       - name: Download signal-cli build from CI workflow
         uses: actions/download-artifact@v8
 
@@ -221,7 +218,7 @@ jobs:
         with:
           image: ${{ steps.build_image.outputs.image }}
           tags: ${{ steps.build_image.outputs.tags }}
-          registry: ${{ env.IMAGE_REGISTRY_HOST }}/${{ steps.ghcr_namespace.outputs.owner }}
+          registry: ${{ env.IMAGE_REGISTRY }}
           username: ${{ env.REGISTRY_USER }}
           password: ${{ env.REGISTRY_PASSWORD }}
 
@@ -238,9 +235,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
-      - name: Resolve GHCR namespace
-        id: ghcr_namespace
-        run: echo "owner=$(echo \"${GITHUB_REPOSITORY_OWNER}\" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
       - name: Download signal-cli build from CI workflow
         uses: actions/download-artifact@v8
 
@@ -272,7 +266,7 @@ jobs:
         with:
           image: ${{ steps.build_image.outputs.image }}
           tags: ${{ steps.build_image.outputs.tags }}
-          registry: ${{ env.IMAGE_REGISTRY_HOST }}/${{ steps.ghcr_namespace.outputs.owner }}
+          registry: ${{ env.IMAGE_REGISTRY }}
           username: ${{ env.REGISTRY_USER }}
           password: ${{ env.REGISTRY_PASSWORD }}
 
@@ -289,9 +283,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
-      - name: Resolve GHCR namespace
-        id: ghcr_namespace
-        run: echo "owner=$(echo \"${GITHUB_REPOSITORY_OWNER}\" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
       - name: Download signal-cli build from CI workflow
         uses: actions/download-artifact@v8
 
@@ -323,7 +314,7 @@ jobs:
         with:
           image: ${{ steps.build_image.outputs.image }}
           tags: ${{ steps.build_image.outputs.tags }}
-          registry: ${{ env.IMAGE_REGISTRY_HOST }}/${{ steps.ghcr_namespace.outputs.owner }}
+          registry: ${{ env.IMAGE_REGISTRY }}
           username: ${{ env.REGISTRY_USER }}
           password: ${{ env.REGISTRY_PASSWORD }}
 
