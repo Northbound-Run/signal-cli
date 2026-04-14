@@ -232,7 +232,8 @@ public class RegistrationManagerImpl implements RegistrationManager {
                     account.getCredentialsProvider(),
                     account.getSignalServiceDataStore(),
                     null,
-                    new ReentrantSignalSessionLock());
+                    new ReentrantSignalSessionLock(),
+                    account.getProxy());
             handleResponseException(dependencies.getAccountApi()
                     .setAccountAttributes(account.getAccountAttributes(null)));
             account.setRegistered(true);

@@ -3,6 +3,7 @@ package org.asamk.signal.manager;
 import org.asamk.signal.manager.api.AccountCheckException;
 import org.asamk.signal.manager.api.NotRegisteredException;
 import org.asamk.signal.manager.api.Pair;
+import org.asamk.signal.manager.api.ProxyConfig;
 import org.asamk.signal.manager.api.ServiceEnvironment;
 import org.asamk.signal.manager.config.ServiceConfig;
 import org.asamk.signal.manager.config.ServiceEnvironmentConfig;
@@ -11,6 +12,7 @@ import org.asamk.signal.manager.internal.ManagerImpl;
 import org.asamk.signal.manager.internal.MultiAccountManagerImpl;
 import org.asamk.signal.manager.internal.PathConfig;
 import org.asamk.signal.manager.internal.ProvisioningManagerImpl;
+import org.asamk.signal.manager.internal.ProxyResolver;
 import org.asamk.signal.manager.internal.RegistrationManagerImpl;
 import org.asamk.signal.manager.storage.SignalAccount;
 import org.asamk.signal.manager.storage.accounts.AccountsStore;
@@ -18,10 +20,13 @@ import org.asamk.signal.manager.util.KeyUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.whispersystems.signalservice.api.push.exceptions.DeprecatedVersionException;
+import org.whispersystems.signalservice.internal.configuration.HttpProxy;
+import org.whispersystems.signalservice.internal.configuration.SignalProxy;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -35,6 +40,7 @@ public class SignalAccountFiles {
     private final String userAgent;
     private final Settings settings;
     private final AccountsStore accountsStore;
+    private final ProxyResolver proxyResolver;
 
     public SignalAccountFiles(
             final File settingsPath,
@@ -47,6 +53,7 @@ public class SignalAccountFiles {
         this.serviceEnvironmentConfig = ServiceConfig.getServiceEnvironmentConfig(this.serviceEnvironment, userAgent);
         this.userAgent = userAgent;
         this.settings = settings;
+        this.proxyResolver = new ProxyResolver();
         this.accountsStore = new AccountsStore(pathConfig.dataPath(), serviceEnvironment, accountPath -> {
             if (accountPath == null || !SignalAccount.accountFileExists(pathConfig.dataPath(), accountPath)) {
                 return null;
@@ -126,7 +133,7 @@ public class SignalAccountFiles {
         final var manager = new ManagerImpl(account,
                 pathConfig,
                 new AccountFileUpdaterImpl(accountsStore, accountPath),
-                serviceEnvironmentConfig,
+                buildServiceEnvironmentConfig(account.getProxy()),
                 userAgent);
 
         try {
@@ -186,7 +193,7 @@ public class SignalAccountFiles {
 
             return new RegistrationManagerImpl(account,
                     pathConfig,
-                    serviceEnvironmentConfig,
+                    buildServiceEnvironmentConfig(account.getProxy()),
                     userAgent,
                     newManagerListener,
                     new AccountFileUpdaterImpl(accountsStore, newAccountPath));
@@ -201,9 +208,44 @@ public class SignalAccountFiles {
 
         return new RegistrationManagerImpl(account,
                 pathConfig,
-                serviceEnvironmentConfig,
+                buildServiceEnvironmentConfig(account.getProxy()),
                 userAgent,
                 newManagerListener,
                 new AccountFileUpdaterImpl(accountsStore, accountPath));
+    }
+
+    /**
+     * Builds a {@link ServiceEnvironmentConfig} for a specific account's proxy
+     * configuration. Falls back to the shared no-proxy config when {@code proxy}
+     * is {@code null}, so accounts without a stored proxy produce byte-for-byte
+     * the same {@link org.whispersystems.signalservice.internal.configuration.SignalServiceConfiguration}
+     * as previous releases.
+     * <p>
+     * Template placeholders ({@code {COUNTRY}}, {@code {SESSION}}) on the
+     * supplied {@link ProxyConfig} are expanded once here, at config-build time,
+     * via {@link ProxyResolver}. Per-call overrides are out of scope for this
+     * method — see US-005.
+     */
+    public ServiceEnvironmentConfig buildServiceEnvironmentConfig(final ProxyConfig proxy) {
+        if (proxy == null) {
+            return serviceEnvironmentConfig;
+        }
+        final var resolved = proxyResolver.resolve(proxy);
+        final Optional<SignalProxy> signalProxy;
+        final Optional<HttpProxy> systemProxy;
+        switch (resolved.type()) {
+            case HTTP -> {
+                signalProxy = Optional.empty();
+                systemProxy = Optional.of(new HttpProxy(resolved.host(), resolved.port()));
+            }
+            case SOCKS5 -> {
+                // OkHttp uses system-default ProxySelector for SOCKS; libsignal Network
+                // receives the SOCKS proxy via SignalDependencies.setSignalNetworkProxy.
+                signalProxy = Optional.empty();
+                systemProxy = Optional.empty();
+            }
+            default -> throw new IllegalStateException("Unknown proxy type: " + resolved.type());
+        }
+        return ServiceConfig.getServiceEnvironmentConfig(serviceEnvironment, userAgent, signalProxy, systemProxy);
     }
 }

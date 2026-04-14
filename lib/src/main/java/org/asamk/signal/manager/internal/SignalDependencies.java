@@ -1,5 +1,6 @@
 package org.asamk.signal.manager.internal;
 
+import org.asamk.signal.manager.api.ProxyConfig;
 import org.asamk.signal.manager.config.ServiceConfig;
 import org.asamk.signal.manager.config.ServiceEnvironmentConfig;
 import org.asamk.signal.manager.util.Utils;
@@ -63,6 +64,7 @@ public class SignalDependencies {
     private final SignalServiceDataStore dataStore;
     private final ExecutorService executor;
     private final SignalSessionLock sessionLock;
+    private final ProxyConfig accountProxy;
 
     private boolean allowStories = true;
 
@@ -102,12 +104,25 @@ public class SignalDependencies {
             final ExecutorService executor,
             final SignalSessionLock sessionLock
     ) {
+        this(serviceEnvironmentConfig, userAgent, credentialsProvider, dataStore, executor, sessionLock, null);
+    }
+
+    SignalDependencies(
+            final ServiceEnvironmentConfig serviceEnvironmentConfig,
+            final String userAgent,
+            final CredentialsProvider credentialsProvider,
+            final SignalServiceDataStore dataStore,
+            final ExecutorService executor,
+            final SignalSessionLock sessionLock,
+            final ProxyConfig accountProxy
+    ) {
         this.serviceEnvironmentConfig = serviceEnvironmentConfig;
         this.userAgent = userAgent;
         this.credentialsProvider = credentialsProvider;
         this.dataStore = dataStore;
         this.executor = executor;
         this.sessionLock = sessionLock;
+        this.accountProxy = accountProxy;
     }
 
     public void resetAfterAddressChange() {
@@ -164,6 +179,23 @@ public class SignalDependencies {
     }
 
     private void setSignalNetworkProxy(Network libSignalNetwork) {
+        if (accountProxy != null) {
+            final var resolved = new ProxyResolver().resolve(accountProxy);
+            final var scheme = switch (resolved.type()) {
+                case HTTP -> "http";
+                case SOCKS5 -> "socks";
+            };
+            try {
+                libSignalNetwork.setProxy(scheme,
+                        resolved.host(),
+                        resolved.port(),
+                        resolved.username(),
+                        resolved.password());
+            } catch (IOException e) {
+                logger.warn("Failed to set per-account {} proxy", scheme, e);
+            }
+            return;
+        }
         final var proxy = Utils.getHttpsProxy();
         if (proxy.address() instanceof InetSocketAddress addr) {
             switch (proxy.type()) {

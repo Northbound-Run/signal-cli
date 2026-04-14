@@ -191,7 +191,8 @@ public class ManagerImpl implements Manager {
                 account.getCredentialsProvider(),
                 account.getSignalServiceDataStore(),
                 executor,
-                sessionLock);
+                sessionLock,
+                account.getProxy());
         final var avatarStore = new AvatarStore(pathConfig.avatarsPath());
         final var attachmentStore = new AttachmentStore(pathConfig.attachmentsPath());
         final var stickerPackStore = new StickerPackStore(pathConfig.stickerPacksPath());

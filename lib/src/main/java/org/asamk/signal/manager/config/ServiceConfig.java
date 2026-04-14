@@ -3,8 +3,11 @@ package org.asamk.signal.manager.config;
 import org.asamk.signal.manager.api.ServiceEnvironment;
 import org.signal.libsignal.protocol.util.Medium;
 import org.whispersystems.signalservice.api.account.AccountAttributes;
+import org.whispersystems.signalservice.internal.configuration.HttpProxy;
+import org.whispersystems.signalservice.internal.configuration.SignalProxy;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Interceptor;
@@ -38,6 +41,15 @@ public class ServiceConfig {
             ServiceEnvironment serviceEnvironment,
             String userAgent
     ) {
+        return getServiceEnvironmentConfig(serviceEnvironment, userAgent, Optional.empty(), Optional.empty());
+    }
+
+    public static ServiceEnvironmentConfig getServiceEnvironmentConfig(
+            ServiceEnvironment serviceEnvironment,
+            String userAgent,
+            Optional<SignalProxy> proxy,
+            Optional<HttpProxy> systemProxy
+    ) {
         final Interceptor userAgentInterceptor = chain -> chain.proceed(chain.request()
                 .newBuilder()
                 .header("User-Agent", userAgent)
@@ -46,8 +58,8 @@ public class ServiceConfig {
         final var interceptors = List.of(userAgentInterceptor);
 
         return switch (serviceEnvironment) {
-            case LIVE -> LiveConfig.getServiceEnvironmentConfig(interceptors);
-            case STAGING -> StagingConfig.getServiceEnvironmentConfig(interceptors);
+            case LIVE -> LiveConfig.getServiceEnvironmentConfig(interceptors, proxy, systemProxy);
+            case STAGING -> StagingConfig.getServiceEnvironmentConfig(interceptors, proxy, systemProxy);
         };
     }
 }
