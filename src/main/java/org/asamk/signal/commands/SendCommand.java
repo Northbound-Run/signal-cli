@@ -7,6 +7,7 @@ import net.sourceforge.argparse4j.inf.Subparser;
 import org.asamk.signal.commands.exceptions.CommandException;
 import org.asamk.signal.commands.exceptions.UnexpectedErrorException;
 import org.asamk.signal.commands.exceptions.UserErrorException;
+import org.asamk.signal.commands.util.ProxyArgumentHelper;
 import org.asamk.signal.manager.Manager;
 import org.asamk.signal.manager.api.AttachmentInvalidException;
 import org.asamk.signal.manager.api.GroupNotFoundException;
@@ -112,10 +113,34 @@ public class SendCommand implements JsonRpcLocalCommand {
         subparser.addArgument("--voice-note")
                 .action(Arguments.storeTrue())
                 .help("Mark audio attachments as voice notes. Voice notes are displayed inline in Signal clients.");
+        ProxyArgumentHelper.attachProxyArgs(subparser);
     }
 
     @Override
     public void handleCommand(
+            final Namespace ns,
+            final Manager m,
+            final OutputWriter outputWriter
+    ) throws CommandException {
+        final var proxyOverride = ProxyArgumentHelper.parseProxyUrl(ns.getString("proxy"));
+        if (proxyOverride != null) {
+            try {
+                m.withProxyOverride(proxyOverride, () -> {
+                    sendInternal(ns, m, outputWriter);
+                    return null;
+                });
+            } catch (CommandException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new UnexpectedErrorException("Failed to send message: " + e.getMessage() + " (" + e.getClass()
+                        .getSimpleName() + ")", e);
+            }
+            return;
+        }
+        sendInternal(ns, m, outputWriter);
+    }
+
+    private void sendInternal(
             final Namespace ns,
             final Manager m,
             final OutputWriter outputWriter

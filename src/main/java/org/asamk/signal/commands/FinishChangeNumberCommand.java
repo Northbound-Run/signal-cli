@@ -5,7 +5,9 @@ import net.sourceforge.argparse4j.inf.Subparser;
 
 import org.asamk.signal.commands.exceptions.CommandException;
 import org.asamk.signal.commands.exceptions.IOErrorException;
+import org.asamk.signal.commands.exceptions.UnexpectedErrorException;
 import org.asamk.signal.commands.exceptions.UserErrorException;
+import org.asamk.signal.commands.util.ProxyArgumentHelper;
 import org.asamk.signal.manager.Manager;
 import org.asamk.signal.manager.api.IncorrectPinException;
 import org.asamk.signal.manager.api.NotPrimaryDeviceException;
@@ -30,6 +32,7 @@ public class FinishChangeNumberCommand implements JsonRpcLocalCommand {
                 .help("The verification code you received via sms or voice call.")
                 .required(true);
         subparser.addArgument("-p", "--pin").help("The registration lock PIN, that was set by the user (Optional)");
+        ProxyArgumentHelper.attachProxyArgs(subparser);
     }
 
     @Override
@@ -41,7 +44,34 @@ public class FinishChangeNumberCommand implements JsonRpcLocalCommand {
         final var newNumber = ns.getString("number");
         final var verificationCode = ns.getString("verification-code");
         final var pin = ns.getString("pin");
+        final var proxyOverride = ProxyArgumentHelper.parseProxyUrl(ns.getString("proxy"));
 
+        if (proxyOverride == null) {
+            finishChangeNumber(m, newNumber, verificationCode, pin);
+            return;
+        }
+        try {
+            m.withProxyOverride(proxyOverride, () -> {
+                finishChangeNumber(m, newNumber, verificationCode, pin);
+                return null;
+            });
+        } catch (CommandException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new UnexpectedErrorException("Failed to run finishChangeNumber with proxy override: "
+                    + e.getMessage()
+                    + " ("
+                    + e.getClass().getSimpleName()
+                    + ")", e);
+        }
+    }
+
+    private void finishChangeNumber(
+            final Manager m,
+            final String newNumber,
+            final String verificationCode,
+            final String pin
+    ) throws CommandException {
         try {
             m.finishChangeNumber(newNumber, verificationCode, pin);
         } catch (PinLockedException e) {

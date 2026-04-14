@@ -10,7 +10,9 @@ import net.sourceforge.argparse4j.inf.Subparser;
 
 import org.asamk.signal.commands.exceptions.CommandException;
 import org.asamk.signal.commands.exceptions.IOErrorException;
+import org.asamk.signal.commands.exceptions.UnexpectedErrorException;
 import org.asamk.signal.commands.exceptions.UserErrorException;
+import org.asamk.signal.commands.util.ProxyArgumentHelper;
 import org.asamk.signal.manager.ProvisioningManager;
 import org.asamk.signal.manager.api.UserAlreadyExistsException;
 import org.asamk.signal.output.OutputWriter;
@@ -35,6 +37,7 @@ public class LinkCommand implements ProvisioningCommand {
     public void attachToSubparser(final Subparser subparser) {
         subparser.help("Link to an existing device, instead of registering a new number.");
         subparser.addArgument("-n", "--name").help("Specify a name to describe this new device.");
+        ProxyArgumentHelper.attachProxyArgs(subparser);
     }
 
     @Override
@@ -45,10 +48,35 @@ public class LinkCommand implements ProvisioningCommand {
     ) throws CommandException {
         final var writer = (PlainTextWriter) outputWriter;
 
-        var deviceName = ns.getString("name");
-        if (deviceName == null) {
-            deviceName = "cli";
+        var deviceNameArg = ns.getString("name");
+        final var deviceName = deviceNameArg == null ? "cli" : deviceNameArg;
+        final var proxyOverride = ProxyArgumentHelper.parseProxyUrl(ns.getString("proxy"));
+
+        if (proxyOverride == null) {
+            link(m, writer, deviceName);
+            return;
         }
+        try {
+            m.withProxyOverride(proxyOverride, () -> {
+                link(m, writer, deviceName);
+                return null;
+            });
+        } catch (CommandException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new UnexpectedErrorException("Failed to run link with proxy override: "
+                    + e.getMessage()
+                    + " ("
+                    + e.getClass().getSimpleName()
+                    + ")", e);
+        }
+    }
+
+    private void link(
+            final ProvisioningManager m,
+            final PlainTextWriter writer,
+            final String deviceName
+    ) throws CommandException {
         try {
             final URI deviceLinkUri = m.getDeviceLinkUri();
             if (System.console() != null) {

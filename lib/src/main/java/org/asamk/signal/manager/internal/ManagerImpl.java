@@ -54,6 +54,7 @@ import org.asamk.signal.manager.api.PinLockMissingException;
 import org.asamk.signal.manager.api.PinLockedException;
 import org.asamk.signal.manager.api.Profile;
 import org.asamk.signal.manager.api.ProxyConfig;
+import org.asamk.signal.manager.api.ProxyOverrideCallable;
 import org.asamk.signal.manager.api.RateLimitException;
 import org.asamk.signal.manager.api.ReceiveConfig;
 import org.asamk.signal.manager.api.Recipient;
@@ -478,6 +479,47 @@ public class ManagerImpl implements Manager {
     @Override
     public void removeProxy() {
         setProxy(null);
+    }
+
+    /**
+     * Lock used to serialize {@link #withProxyOverride} calls. The implementation
+     * rebuilds the shared {@link SignalDependencies} network stack for the
+     * duration of each call; concurrent overrides would interleave those
+     * rebuilds and race with outstanding network activity. A per-thread
+     * ThreadLocal slot was considered but rejected because the cached API
+     * clients inside {@link SignalDependencies} are shared across threads, so
+     * an override set on one thread would leak to unrelated threads.
+     */
+    private final Object proxyOverrideLock = new Object();
+
+    @Override
+    public <T> T withProxyOverride(
+            final ProxyConfig override,
+            final ProxyOverrideCallable<T> callable
+    ) throws Exception {
+        Objects.requireNonNull(callable, "callable");
+        if (override == null) {
+            return callable.call();
+        }
+        if (serviceEnvironmentConfigBuilder == null) {
+            logger.warn("Per-call proxy override ignored: ManagerImpl was constructed "
+                    + "without a serviceEnvironmentConfigBuilder. Falling back to the "
+                    + "stored account proxy.");
+            return callable.call();
+        }
+        synchronized (proxyOverrideLock) {
+            final var previous = account.getProxy();
+            final var overrideConfig = serviceEnvironmentConfigBuilder.apply(override);
+            dependencies.reconfigureProxy(overrideConfig, override);
+            logger.info("Applied per-call proxy override: {}", override);
+            try {
+                return callable.call();
+            } finally {
+                final var restoredConfig = serviceEnvironmentConfigBuilder.apply(previous);
+                dependencies.reconfigureProxy(restoredConfig, previous);
+                logger.info("Restored account proxy after override: {}", previous);
+            }
+        }
     }
 
     @Override

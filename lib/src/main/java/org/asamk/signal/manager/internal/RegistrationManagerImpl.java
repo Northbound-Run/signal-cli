@@ -23,6 +23,8 @@ import org.asamk.signal.manager.api.IncorrectPinException;
 import org.asamk.signal.manager.api.NonNormalizedPhoneNumberException;
 import org.asamk.signal.manager.api.PinLockMissingException;
 import org.asamk.signal.manager.api.PinLockedException;
+import org.asamk.signal.manager.api.ProxyConfig;
+import org.asamk.signal.manager.api.ProxyOverrideCallable;
 import org.asamk.signal.manager.api.RateLimitException;
 import org.asamk.signal.manager.api.UpdateProfile;
 import org.asamk.signal.manager.api.VerificationMethodNotAvailableException;
@@ -50,7 +52,9 @@ import org.whispersystems.signalservice.api.svr.SecureValueRecovery;
 import org.whispersystems.signalservice.internal.push.VerifyAccountResponse;
 
 import java.io.IOException;
+import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import static org.asamk.signal.manager.util.KeyUtils.generatePreKeysForType;
 import static org.asamk.signal.manager.util.Utils.handleResponseException;
@@ -61,13 +65,21 @@ public class RegistrationManagerImpl implements RegistrationManager {
 
     private SignalAccount account;
     private final PathConfig pathConfig;
-    private final ServiceEnvironmentConfig serviceEnvironmentConfig;
+    private ServiceEnvironmentConfig serviceEnvironmentConfig;
     private final String userAgent;
     private final Consumer<Manager> newManagerListener;
+    private final Function<ProxyConfig, ServiceEnvironmentConfig> serviceEnvironmentConfigBuilder;
 
-    private final SignalServiceAccountManager unauthenticatedAccountManager;
-    private final PinHelper pinHelper;
+    private SignalServiceAccountManager unauthenticatedAccountManager;
+    private PinHelper pinHelper;
     private final AccountFileUpdater accountFileUpdater;
+
+    /**
+     * Lock that serializes {@link #withProxyOverride} calls. Concurrent
+     * overrides would race on {@link #serviceEnvironmentConfig} and
+     * {@link #unauthenticatedAccountManager}.
+     */
+    private final Object proxyOverrideLock = new Object();
 
     public RegistrationManagerImpl(
             SignalAccount account,
@@ -77,13 +89,36 @@ public class RegistrationManagerImpl implements RegistrationManager {
             Consumer<Manager> newManagerListener,
             AccountFileUpdater accountFileUpdater
     ) {
+        this(account,
+                pathConfig,
+                serviceEnvironmentConfig,
+                userAgent,
+                newManagerListener,
+                accountFileUpdater,
+                null);
+    }
+
+    public RegistrationManagerImpl(
+            SignalAccount account,
+            PathConfig pathConfig,
+            ServiceEnvironmentConfig serviceEnvironmentConfig,
+            String userAgent,
+            Consumer<Manager> newManagerListener,
+            AccountFileUpdater accountFileUpdater,
+            Function<ProxyConfig, ServiceEnvironmentConfig> serviceEnvironmentConfigBuilder
+    ) {
         this.account = account;
         this.pathConfig = pathConfig;
         this.accountFileUpdater = accountFileUpdater;
         this.serviceEnvironmentConfig = serviceEnvironmentConfig;
         this.userAgent = userAgent;
         this.newManagerListener = newManagerListener;
+        this.serviceEnvironmentConfigBuilder = serviceEnvironmentConfigBuilder;
 
+        rebuildAccountManager();
+    }
+
+    private void rebuildAccountManager() {
         this.unauthenticatedAccountManager = SignalServiceAccountManager.createWithStaticCredentials(
                 serviceEnvironmentConfig.signalServiceConfiguration(),
                 // Using empty UUID, because registering doesn't work otherwise
@@ -100,6 +135,38 @@ public class RegistrationManagerImpl implements RegistrationManager {
                 .map(mr -> (SecureValueRecovery) this.unauthenticatedAccountManager.getSecureValueRecoveryV2(mr))
                 .toList();
         this.pinHelper = new PinHelper(secureValueRecovery);
+    }
+
+    @Override
+    public <T> T withProxyOverride(
+            final ProxyConfig override,
+            final ProxyOverrideCallable<T> callable
+    ) throws Exception {
+        Objects.requireNonNull(callable, "callable");
+        if (override == null) {
+            return callable.call();
+        }
+        if (serviceEnvironmentConfigBuilder == null) {
+            logger.warn("Per-call proxy override ignored: RegistrationManagerImpl was constructed "
+                    + "without a serviceEnvironmentConfigBuilder. Falling back to the stored proxy.");
+            return callable.call();
+        }
+        synchronized (proxyOverrideLock) {
+            final var previousConfig = serviceEnvironmentConfig;
+            final var previousAccountManager = unauthenticatedAccountManager;
+            final var previousPinHelper = pinHelper;
+            this.serviceEnvironmentConfig = serviceEnvironmentConfigBuilder.apply(override);
+            rebuildAccountManager();
+            logger.info("Applied per-call proxy override on RegistrationManager: {}", override);
+            try {
+                return callable.call();
+            } finally {
+                this.serviceEnvironmentConfig = previousConfig;
+                this.unauthenticatedAccountManager = previousAccountManager;
+                this.pinHelper = previousPinHelper;
+                logger.info("Restored RegistrationManager proxy after override.");
+            }
+        }
     }
 
     @Override

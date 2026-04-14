@@ -233,6 +233,14 @@ public class DbusManagerImpl implements Manager {
     }
 
     @Override
+    public <T> T withProxyOverride(
+            final org.asamk.signal.manager.api.ProxyConfig override,
+            final org.asamk.signal.manager.api.ProxyOverrideCallable<T> callable
+    ) throws Exception {
+        throw new UnsupportedOperationException("withProxyOverride is not supported over DBus");
+    }
+
+    @Override
     public void unregister() throws IOException {
         signal.unregister();
     }

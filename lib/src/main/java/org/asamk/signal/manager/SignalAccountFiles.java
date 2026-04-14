@@ -164,7 +164,8 @@ public class SignalAccountFiles {
                 serviceEnvironmentConfig,
                 userAgent,
                 newManagerListener,
-                accountsStore);
+                accountsStore,
+                this::buildServiceEnvironmentConfig);
     }
 
     public RegistrationManager initRegistrationManager(String number) throws IOException {
@@ -197,7 +198,8 @@ public class SignalAccountFiles {
                     buildServiceEnvironmentConfig(account.getProxy()),
                     userAgent,
                     newManagerListener,
-                    new AccountFileUpdaterImpl(accountsStore, newAccountPath));
+                    new AccountFileUpdaterImpl(accountsStore, newAccountPath),
+                    this::buildServiceEnvironmentConfig);
         }
 
         var account = SignalAccount.load(pathConfig.dataPath(), accountPath, true, settings);
@@ -212,7 +214,8 @@ public class SignalAccountFiles {
                 buildServiceEnvironmentConfig(account.getProxy()),
                 userAgent,
                 newManagerListener,
-                new AccountFileUpdaterImpl(accountsStore, accountPath));
+                new AccountFileUpdaterImpl(accountsStore, accountPath),
+                this::buildServiceEnvironmentConfig);
     }
 
     /**

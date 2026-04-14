@@ -2,6 +2,8 @@ package org.asamk.signal.dbus;
 
 import org.asamk.SignalControl;
 import org.asamk.signal.manager.ProvisioningManager;
+import org.asamk.signal.manager.api.ProxyConfig;
+import org.asamk.signal.manager.api.ProxyOverrideCallable;
 import org.asamk.signal.manager.api.UserAlreadyExistsException;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 
@@ -49,5 +51,13 @@ public class DbusProvisioningManagerImpl implements ProvisioningManager {
     @Override
     public String finishDeviceLink(final String deviceName) throws IOException, TimeoutException, UserAlreadyExistsException {
         return signalControl.finishLink(deviceLinkUri.toString(), deviceName);
+    }
+
+    @Override
+    public <T> T withProxyOverride(
+            final ProxyConfig override,
+            final ProxyOverrideCallable<T> callable
+    ) throws Exception {
+        throw new UnsupportedOperationException("withProxyOverride is not supported over DBus");
     }
 }

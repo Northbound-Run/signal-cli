@@ -5,6 +5,8 @@ import org.asamk.signal.manager.RegistrationManager;
 import org.asamk.signal.manager.api.CaptchaRequiredException;
 import org.asamk.signal.manager.api.IncorrectPinException;
 import org.asamk.signal.manager.api.PinLockedException;
+import org.asamk.signal.manager.api.ProxyConfig;
+import org.asamk.signal.manager.api.ProxyOverrideCallable;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
 
 import java.io.IOException;
@@ -61,6 +63,14 @@ public class DbusRegistrationManagerImpl implements RegistrationManager {
     @Override
     public boolean isRegistered() {
         throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <T> T withProxyOverride(
+            final ProxyConfig override,
+            final ProxyOverrideCallable<T> callable
+    ) throws Exception {
+        throw new UnsupportedOperationException("withProxyOverride is not supported over DBus");
     }
 
     @Override

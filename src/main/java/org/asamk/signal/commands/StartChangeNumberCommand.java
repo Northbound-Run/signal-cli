@@ -7,7 +7,9 @@ import net.sourceforge.argparse4j.inf.Subparser;
 import org.asamk.signal.commands.exceptions.CommandException;
 import org.asamk.signal.commands.exceptions.IOErrorException;
 import org.asamk.signal.commands.exceptions.RateLimitErrorException;
+import org.asamk.signal.commands.exceptions.UnexpectedErrorException;
 import org.asamk.signal.commands.exceptions.UserErrorException;
+import org.asamk.signal.commands.util.ProxyArgumentHelper;
 import org.asamk.signal.manager.Manager;
 import org.asamk.signal.manager.api.CaptchaRequiredException;
 import org.asamk.signal.manager.api.NonNormalizedPhoneNumberException;
@@ -35,6 +37,7 @@ public class StartChangeNumberCommand implements JsonRpcLocalCommand {
                 .action(Arguments.storeTrue());
         subparser.addArgument("--captcha")
                 .help("The captcha token, required if change number failed with a captcha required error.");
+        ProxyArgumentHelper.attachProxyArgs(subparser);
     }
 
     @Override
@@ -46,7 +49,34 @@ public class StartChangeNumberCommand implements JsonRpcLocalCommand {
         final var newNumber = ns.getString("number");
         final var voiceVerification = Boolean.TRUE.equals(ns.getBoolean("voice"));
         final var captcha = ns.getString("captcha");
+        final var proxyOverride = ProxyArgumentHelper.parseProxyUrl(ns.getString("proxy"));
 
+        if (proxyOverride == null) {
+            startChangeNumber(m, newNumber, voiceVerification, captcha);
+            return;
+        }
+        try {
+            m.withProxyOverride(proxyOverride, () -> {
+                startChangeNumber(m, newNumber, voiceVerification, captcha);
+                return null;
+            });
+        } catch (CommandException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new UnexpectedErrorException("Failed to run startChangeNumber with proxy override: "
+                    + e.getMessage()
+                    + " ("
+                    + e.getClass().getSimpleName()
+                    + ")", e);
+        }
+    }
+
+    private void startChangeNumber(
+            final Manager m,
+            final String newNumber,
+            final boolean voiceVerification,
+            final String captcha
+    ) throws CommandException {
         try {
             m.startChangeNumber(newNumber, voiceVerification, captcha);
         } catch (RateLimitException e) {

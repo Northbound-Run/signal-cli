@@ -6,6 +6,8 @@ import net.sourceforge.argparse4j.inf.Subparser;
 
 import org.asamk.signal.commands.exceptions.CommandException;
 import org.asamk.signal.commands.exceptions.IOErrorException;
+import org.asamk.signal.commands.exceptions.UnexpectedErrorException;
+import org.asamk.signal.commands.util.ProxyArgumentHelper;
 import org.asamk.signal.manager.Manager;
 import org.asamk.signal.manager.api.UpdateProfile;
 import org.asamk.signal.output.OutputWriter;
@@ -33,6 +35,7 @@ public class UpdateProfileCommand implements JsonRpcLocalCommand {
         final var avatarOptions = subparser.addMutuallyExclusiveGroup();
         avatarOptions.addArgument("--avatar").help("Path to new profile avatar");
         avatarOptions.addArgument("--remove-avatar").action(Arguments.storeTrue());
+        ProxyArgumentHelper.attachProxyArgs(subparser);
     }
 
     @Override
@@ -53,17 +56,41 @@ public class UpdateProfileCommand implements JsonRpcLocalCommand {
         var avatarPath = ns.getString("avatar");
         boolean removeAvatar = Boolean.TRUE.equals(ns.getBoolean("remove-avatar"));
         String avatarFile = removeAvatar || avatarPath == null ? null : avatarPath;
+        final var proxyOverride = ProxyArgumentHelper.parseProxyUrl(ns.getString("proxy"));
 
+        final var profile = UpdateProfile.newBuilder()
+                .withGivenName(givenName)
+                .withFamilyName(familyName)
+                .withAbout(about)
+                .withAboutEmoji(aboutEmoji)
+                .withMobileCoinAddress(mobileCoinAddress)
+                .withAvatar(avatarFile)
+                .withDeleteAvatar(removeAvatar)
+                .build();
+
+        if (proxyOverride == null) {
+            updateProfileSafe(m, profile);
+            return;
+        }
         try {
-            m.updateProfile(UpdateProfile.newBuilder()
-                    .withGivenName(givenName)
-                    .withFamilyName(familyName)
-                    .withAbout(about)
-                    .withAboutEmoji(aboutEmoji)
-                    .withMobileCoinAddress(mobileCoinAddress)
-                    .withAvatar(avatarFile)
-                    .withDeleteAvatar(removeAvatar)
-                    .build());
+            m.withProxyOverride(proxyOverride, () -> {
+                updateProfileSafe(m, profile);
+                return null;
+            });
+        } catch (CommandException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new UnexpectedErrorException("Failed to run updateProfile with proxy override: "
+                    + e.getMessage()
+                    + " ("
+                    + e.getClass().getSimpleName()
+                    + ")", e);
+        }
+    }
+
+    private void updateProfileSafe(final Manager m, final UpdateProfile profile) throws CommandException {
+        try {
+            m.updateProfile(profile);
         } catch (IOException e) {
             throw new IOErrorException("Update profile error: " + e.getMessage(), e);
         }

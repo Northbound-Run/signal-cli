@@ -10,9 +10,12 @@ import org.asamk.signal.OutputType;
 import org.asamk.signal.commands.exceptions.CommandException;
 import org.asamk.signal.commands.exceptions.IOErrorException;
 import org.asamk.signal.commands.exceptions.RateLimitErrorException;
+import org.asamk.signal.commands.exceptions.UnexpectedErrorException;
 import org.asamk.signal.commands.exceptions.UserErrorException;
+import org.asamk.signal.commands.util.ProxyArgumentHelper;
 import org.asamk.signal.manager.RegistrationManager;
 import org.asamk.signal.manager.api.CaptchaRequiredException;
+import org.asamk.signal.manager.api.ProxyConfig;
 import org.asamk.signal.manager.api.NonNormalizedPhoneNumberException;
 import org.asamk.signal.manager.api.RateLimitException;
 import org.asamk.signal.manager.api.VerificationMethodNotAvailableException;
@@ -41,6 +44,7 @@ public class RegisterCommand implements RegistrationCommand, JsonRpcRegistration
         subparser.addArgument("--reregister")
                 .action(Arguments.storeTrue())
                 .help("Register even if account is already registered");
+        ProxyArgumentHelper.attachProxyArgs(subparser);
     }
 
     @Override
@@ -48,8 +52,9 @@ public class RegisterCommand implements RegistrationCommand, JsonRpcRegistration
         final boolean voiceVerification = Boolean.TRUE.equals(ns.getBoolean("voice"));
         final var captcha = ns.getString("captcha");
         final var reregister = Boolean.TRUE.equals(ns.getBoolean("reregister"));
+        final var proxyOverride = ProxyArgumentHelper.parseProxyUrl(ns.getString("proxy"));
 
-        register(m, voiceVerification, captcha, reregister);
+        runWithProxy(m, proxyOverride, () -> register(m, voiceVerification, captcha, reregister));
     }
 
     @Override
@@ -68,7 +73,40 @@ public class RegisterCommand implements RegistrationCommand, JsonRpcRegistration
             final RegistrationManager m,
             final JsonWriter jsonWriter
     ) throws CommandException {
-        register(m, Boolean.TRUE.equals(request.voice()), request.captcha(), Boolean.TRUE.equals(request.reregister()));
+        final var proxyOverride = ProxyArgumentHelper.parseProxyUrl(request.proxy());
+        runWithProxy(m, proxyOverride, () -> register(m,
+                Boolean.TRUE.equals(request.voice()),
+                request.captcha(),
+                Boolean.TRUE.equals(request.reregister())));
+    }
+
+    private interface RegistrationCallable {
+        void call() throws CommandException;
+    }
+
+    private static void runWithProxy(
+            final RegistrationManager m,
+            final ProxyConfig proxyOverride,
+            final RegistrationCallable callable
+    ) throws CommandException {
+        if (proxyOverride == null) {
+            callable.call();
+            return;
+        }
+        try {
+            m.withProxyOverride(proxyOverride, () -> {
+                callable.call();
+                return null;
+            });
+        } catch (CommandException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new UnexpectedErrorException("Failed to run registration command with proxy override: "
+                    + e.getMessage()
+                    + " ("
+                    + e.getClass().getSimpleName()
+                    + ")", e);
+        }
     }
 
     private void register(
@@ -99,5 +137,5 @@ public class RegisterCommand implements RegistrationCommand, JsonRpcRegistration
         }
     }
 
-    public record RegistrationParams(Boolean voice, String captcha, Boolean reregister) {}
+    public record RegistrationParams(Boolean voice, String captcha, Boolean reregister, String proxy) {}
 }

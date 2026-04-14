@@ -183,6 +183,14 @@ class SubscribeCallEventsTest {
         }
 
         @Override
+        public <T> T withProxyOverride(
+                org.asamk.signal.manager.api.ProxyConfig override,
+                org.asamk.signal.manager.api.ProxyOverrideCallable<T> callable
+        ) throws Exception {
+            return callable.call();
+        }
+
+        @Override
         public void unregister() {
         }
 

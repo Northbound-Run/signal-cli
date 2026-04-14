@@ -20,6 +20,8 @@ import org.asamk.signal.manager.Manager;
 import org.asamk.signal.manager.ProvisioningManager;
 import org.asamk.signal.manager.Settings;
 import org.asamk.signal.manager.api.DeviceLinkUrl;
+import org.asamk.signal.manager.api.ProxyConfig;
+import org.asamk.signal.manager.api.ProxyOverrideCallable;
 import org.asamk.signal.manager.api.UserAlreadyExistsException;
 import org.asamk.signal.manager.config.ServiceConfig;
 import org.asamk.signal.manager.config.ServiceEnvironmentConfig;
@@ -41,8 +43,10 @@ import org.whispersystems.signalservice.internal.util.DynamicCredentialsProvider
 import java.io.IOException;
 import java.net.URI;
 import java.nio.channels.OverlappingFileLockException;
+import java.util.Objects;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import static org.asamk.signal.manager.util.KeyUtils.generatePreKeysForType;
 
@@ -51,14 +55,23 @@ public class ProvisioningManagerImpl implements ProvisioningManager {
     private static final Logger logger = LoggerFactory.getLogger(ProvisioningManagerImpl.class);
 
     private final PathConfig pathConfig;
-    private final ServiceEnvironmentConfig serviceEnvironmentConfig;
+    private ServiceEnvironmentConfig serviceEnvironmentConfig;
     private final String userAgent;
     private final Consumer<Manager> newManagerListener;
     private final AccountsStore accountsStore;
+    private final Function<ProxyConfig, ServiceEnvironmentConfig> serviceEnvironmentConfigBuilder;
 
-    private final ProvisioningApi provisioningApi;
+    private ProvisioningApi provisioningApi;
     private final IdentityKeyPair tempIdentityKey;
     private final String password;
+    private final DynamicCredentialsProvider credentialsProvider;
+
+    /**
+     * Lock that serializes {@link #withProxyOverride} calls. Concurrent
+     * overrides would race on {@link #serviceEnvironmentConfig} and
+     * {@link #provisioningApi}.
+     */
+    private final Object proxyOverrideLock = new Object();
 
     public ProvisioningManagerImpl(
             PathConfig pathConfig,
@@ -67,19 +80,35 @@ public class ProvisioningManagerImpl implements ProvisioningManager {
             final Consumer<Manager> newManagerListener,
             final AccountsStore accountsStore
     ) {
+        this(pathConfig, serviceEnvironmentConfig, userAgent, newManagerListener, accountsStore, null);
+    }
+
+    public ProvisioningManagerImpl(
+            PathConfig pathConfig,
+            ServiceEnvironmentConfig serviceEnvironmentConfig,
+            String userAgent,
+            final Consumer<Manager> newManagerListener,
+            final AccountsStore accountsStore,
+            final Function<ProxyConfig, ServiceEnvironmentConfig> serviceEnvironmentConfigBuilder
+    ) {
         this.pathConfig = pathConfig;
         this.serviceEnvironmentConfig = serviceEnvironmentConfig;
         this.userAgent = userAgent;
         this.newManagerListener = newManagerListener;
         this.accountsStore = accountsStore;
+        this.serviceEnvironmentConfigBuilder = serviceEnvironmentConfigBuilder;
 
         tempIdentityKey = KeyUtils.generateIdentityKeyPair();
         password = KeyUtils.createPassword();
-        final var credentialsProvider = new DynamicCredentialsProvider(null,
+        this.credentialsProvider = new DynamicCredentialsProvider(null,
                 null,
                 null,
                 password,
                 SignalServiceAddress.DEFAULT_DEVICE_ID);
+        rebuildProvisioningApi();
+    }
+
+    private void rebuildProvisioningApi() {
         final var pushServiceSocket = new PushServiceSocket(serviceEnvironmentConfig.signalServiceConfiguration(),
                 credentialsProvider,
                 userAgent,
@@ -87,6 +116,36 @@ public class ProvisioningManagerImpl implements ProvisioningManager {
         final var provisioningSocket = new ProvisioningSocket(serviceEnvironmentConfig.signalServiceConfiguration(),
                 userAgent);
         this.provisioningApi = new ProvisioningApi(pushServiceSocket, provisioningSocket, credentialsProvider);
+    }
+
+    @Override
+    public <T> T withProxyOverride(
+            final ProxyConfig override,
+            final ProxyOverrideCallable<T> callable
+    ) throws Exception {
+        Objects.requireNonNull(callable, "callable");
+        if (override == null) {
+            return callable.call();
+        }
+        if (serviceEnvironmentConfigBuilder == null) {
+            logger.warn("Per-call proxy override ignored: ProvisioningManagerImpl was constructed "
+                    + "without a serviceEnvironmentConfigBuilder. Falling back to the existing proxy.");
+            return callable.call();
+        }
+        synchronized (proxyOverrideLock) {
+            final var previousConfig = serviceEnvironmentConfig;
+            final var previousProvisioningApi = provisioningApi;
+            this.serviceEnvironmentConfig = serviceEnvironmentConfigBuilder.apply(override);
+            rebuildProvisioningApi();
+            logger.info("Applied per-call proxy override on ProvisioningManager: {}", override);
+            try {
+                return callable.call();
+            } finally {
+                this.serviceEnvironmentConfig = previousConfig;
+                this.provisioningApi = previousProvisioningApi;
+                logger.info("Restored ProvisioningManager proxy after override.");
+            }
+        }
     }
 
     @Override

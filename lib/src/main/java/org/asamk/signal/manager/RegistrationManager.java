@@ -5,6 +5,8 @@ import org.asamk.signal.manager.api.IncorrectPinException;
 import org.asamk.signal.manager.api.NonNormalizedPhoneNumberException;
 import org.asamk.signal.manager.api.PinLockMissingException;
 import org.asamk.signal.manager.api.PinLockedException;
+import org.asamk.signal.manager.api.ProxyConfig;
+import org.asamk.signal.manager.api.ProxyOverrideCallable;
 import org.asamk.signal.manager.api.RateLimitException;
 import org.asamk.signal.manager.api.VerificationMethodNotAvailableException;
 
@@ -27,4 +29,13 @@ public interface RegistrationManager extends Closeable {
     void deleteLocalAccountData() throws IOException;
 
     boolean isRegistered();
+
+    /**
+     * Run {@code callable} with the effective proxy temporarily replaced by
+     * {@code override}. Implementations may rebuild internal account-manager
+     * objects against the override and restore them when the callable
+     * returns. If {@code override} is {@code null}, the callable runs with
+     * the existing proxy.
+     */
+    <T> T withProxyOverride(ProxyConfig override, ProxyOverrideCallable<T> callable) throws Exception;
 }

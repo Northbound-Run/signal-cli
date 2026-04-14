@@ -35,6 +35,7 @@ import org.asamk.signal.manager.api.PendingAdminApprovalException;
 import org.asamk.signal.manager.api.PinLockMissingException;
 import org.asamk.signal.manager.api.PinLockedException;
 import org.asamk.signal.manager.api.ProxyConfig;
+import org.asamk.signal.manager.api.ProxyOverrideCallable;
 import org.asamk.signal.manager.api.RateLimitException;
 import org.asamk.signal.manager.api.ReceiveConfig;
 import org.asamk.signal.manager.api.Recipient;
@@ -159,6 +160,22 @@ public interface Manager extends Closeable {
      * Clear the per-account proxy. Equivalent to {@code setProxy(null)}.
      */
     void removeProxy();
+
+    /**
+     * Run {@code callable} with the effective proxy temporarily replaced by
+     * {@code override}. The stored account proxy is not modified. When the
+     * callable returns (normally or exceptionally) the prior proxy is
+     * restored so subsequent calls route through it again.
+     * <p>
+     * Implementations serialize concurrent {@code withProxyOverride} calls on
+     * the same {@link Manager} because they rebuild the shared network stack;
+     * nested invocations on the same thread are permitted and unwind in LIFO
+     * order.
+     * <p>
+     * If {@code override} is {@code null} the callable runs with the stored
+     * account proxy (i.e. this is a no-op wrapper).
+     */
+    <T> T withProxyOverride(ProxyConfig override, ProxyOverrideCallable<T> callable) throws Exception;
 
     void unregister() throws IOException;
 

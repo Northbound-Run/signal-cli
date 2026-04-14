@@ -8,11 +8,14 @@ import net.sourceforge.argparse4j.inf.Subparser;
 import org.asamk.signal.OutputType;
 import org.asamk.signal.commands.exceptions.CommandException;
 import org.asamk.signal.commands.exceptions.IOErrorException;
+import org.asamk.signal.commands.exceptions.UnexpectedErrorException;
 import org.asamk.signal.commands.exceptions.UserErrorException;
+import org.asamk.signal.commands.util.ProxyArgumentHelper;
 import org.asamk.signal.manager.RegistrationManager;
 import org.asamk.signal.manager.api.IncorrectPinException;
 import org.asamk.signal.manager.api.PinLockMissingException;
 import org.asamk.signal.manager.api.PinLockedException;
+import org.asamk.signal.manager.api.ProxyConfig;
 import org.asamk.signal.output.JsonWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,14 +38,16 @@ public class VerifyCommand implements RegistrationCommand, JsonRpcRegistrationCo
         subparser.help("Verify the number using the code received via SMS or voice.");
         subparser.addArgument("verification-code").help("The verification code you received via sms or voice call.");
         subparser.addArgument("-p", "--pin").help("The registration lock PIN, that was set by the user (Optional)");
+        ProxyArgumentHelper.attachProxyArgs(subparser);
     }
 
     @Override
     public void handleCommand(final Namespace ns, final RegistrationManager m) throws CommandException {
         var verificationCode = ns.getString("verification-code");
         var pin = ns.getString("pin");
+        final var proxyOverride = ProxyArgumentHelper.parseProxyUrl(ns.getString("proxy"));
 
-        verify(m, verificationCode, pin);
+        runWithProxy(m, proxyOverride, () -> verify(m, verificationCode, pin));
     }
 
     @Override
@@ -61,7 +66,37 @@ public class VerifyCommand implements RegistrationCommand, JsonRpcRegistrationCo
             final RegistrationManager m,
             final JsonWriter jsonWriter
     ) throws CommandException {
-        verify(m, request.verificationCode(), request.pin());
+        final var proxyOverride = ProxyArgumentHelper.parseProxyUrl(request.proxy());
+        runWithProxy(m, proxyOverride, () -> verify(m, request.verificationCode(), request.pin()));
+    }
+
+    private interface VerifyCallable {
+        void call() throws CommandException;
+    }
+
+    private static void runWithProxy(
+            final RegistrationManager m,
+            final ProxyConfig proxyOverride,
+            final VerifyCallable callable
+    ) throws CommandException {
+        if (proxyOverride == null) {
+            callable.call();
+            return;
+        }
+        try {
+            m.withProxyOverride(proxyOverride, () -> {
+                callable.call();
+                return null;
+            });
+        } catch (CommandException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new UnexpectedErrorException("Failed to run verify with proxy override: "
+                    + e.getMessage()
+                    + " ("
+                    + e.getClass().getSimpleName()
+                    + ")", e);
+        }
     }
 
     private void verify(
@@ -85,5 +120,5 @@ public class VerifyCommand implements RegistrationCommand, JsonRpcRegistrationCo
         }
     }
 
-    public record VerifyParams(String verificationCode, String pin) {}
+    public record VerifyParams(String verificationCode, String pin, String proxy) {}
 }
