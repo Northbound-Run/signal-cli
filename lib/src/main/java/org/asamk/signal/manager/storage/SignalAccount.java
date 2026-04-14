@@ -8,6 +8,7 @@ import org.asamk.signal.manager.api.Contact;
 import org.asamk.signal.manager.api.GroupId;
 import org.asamk.signal.manager.api.Pair;
 import org.asamk.signal.manager.api.Profile;
+import org.asamk.signal.manager.api.ProxyConfig;
 import org.asamk.signal.manager.api.ServiceEnvironment;
 import org.asamk.signal.manager.api.TrustLevel;
 import org.asamk.signal.manager.helper.RecipientAddressResolver;
@@ -143,6 +144,7 @@ public class SignalAccount implements Closeable {
     private AccountEntropyPool accountEntropyPool;
     private MediaRootBackupKey mediaRootBackupKey;
     private ProfileKey profileKey;
+    private ProxyConfig proxy;
 
     private Settings settings;
 
@@ -532,6 +534,7 @@ public class SignalAccount implements Closeable {
                 usernameLink = new UsernameLinkComponents(base64.decode(storage.usernameLinkEntropy),
                         UUID.fromString(storage.usernameLinkServerId));
             }
+            proxy = storage.proxy;
         }
 
         if (migratedLegacyConfig) {
@@ -1007,7 +1010,8 @@ public class SignalAccount implements Closeable {
                     mediaRootBackupKey == null ? null : base64.encodeToString(mediaRootBackupKey.getValue()),
                     profileKey == null ? null : base64.encodeToString(profileKey.serialize()),
                     usernameLink == null ? null : base64.encodeToString(usernameLink.getEntropy()),
-                    usernameLink == null ? null : usernameLink.getServerId().toString());
+                    usernameLink == null ? null : usernameLink.getServerId().toString(),
+                    proxy);
             try {
                 try (var output = new ByteArrayOutputStream()) {
                     // Write to memory first to prevent corrupting the file in case of serialization errors
@@ -1716,6 +1720,18 @@ public class SignalAccount implements Closeable {
         save();
     }
 
+    public ProxyConfig getProxy() {
+        return proxy;
+    }
+
+    public void setProxy(final ProxyConfig proxy) {
+        if (java.util.Objects.equals(this.proxy, proxy)) {
+            return;
+        }
+        this.proxy = proxy;
+        save();
+    }
+
     public byte[] getSelfUnidentifiedAccessKey() {
         return UnidentifiedAccess.deriveAccessKeyFrom(getProfileKey());
     }
@@ -1951,6 +1967,7 @@ public class SignalAccount implements Closeable {
         }
     }
 
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
     public record Storage(
             int version,
             long timestamp,
@@ -1971,8 +1988,54 @@ public class SignalAccount implements Closeable {
             String mediaRootBackupKey,
             String profileKey,
             String usernameLinkEntropy,
-            String usernameLinkServerId
+            String usernameLinkServerId,
+            ProxyConfig proxy
     ) {
+
+        public static Storage of(
+                int version,
+                long timestamp,
+                String serviceEnvironment,
+                boolean registered,
+                String number,
+                String username,
+                String encryptedDeviceName,
+                int deviceId,
+                boolean isMultiDevice,
+                String password,
+                AccountData aciAccountData,
+                AccountData pniAccountData,
+                String registrationLockPin,
+                String pinMasterKey,
+                String storageKey,
+                String accountEntropyPool,
+                String mediaRootBackupKey,
+                String profileKey,
+                String usernameLinkEntropy,
+                String usernameLinkServerId
+        ) {
+            return new Storage(version,
+                    timestamp,
+                    serviceEnvironment,
+                    registered,
+                    number,
+                    username,
+                    encryptedDeviceName,
+                    deviceId,
+                    isMultiDevice,
+                    password,
+                    aciAccountData,
+                    pniAccountData,
+                    registrationLockPin,
+                    pinMasterKey,
+                    storageKey,
+                    accountEntropyPool,
+                    mediaRootBackupKey,
+                    profileKey,
+                    usernameLinkEntropy,
+                    usernameLinkServerId,
+                    null);
+        }
 
         public record AccountData(
                 String serviceId,
