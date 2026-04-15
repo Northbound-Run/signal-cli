@@ -190,13 +190,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: graalvm/setup-graalvm@v1
-        with:
-          distribution: 'graalvm'
-          java-version: '25'
-          cache: 'gradle'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
       # Upstream libsignal-client only ships libsignal_jni_amd64.so in its
       # Maven JAR — there's no Linux/aarch64 binary. Build libsignal's JNI
       # for the host arch so the signal-cli native-image has a JNI library
@@ -208,6 +201,16 @@ jobs:
             clang libclang-dev cmake make protobuf-compiler libprotobuf-dev python3 git
 
       - uses: dtolnay/rust-toolchain@stable
+
+      # libsignal's Gradle 8.13 doesn't understand class files produced by
+      # JDK 25 (bytecode major version 69) — so its Groovy scripts blow up
+      # with "Unsupported class file major version 69" if we run under the
+      # GraalVM 25 JDK we need for signal-cli's native-image. Run libsignal
+      # under JDK 21, then swap to GraalVM 25 for signal-cli's nativeCompile.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
 
       - name: Determine libsignal version
         id: libsignal
@@ -228,6 +231,13 @@ jobs:
       - name: Build libsignal-client JAR (includes aarch64 .so)
         working-directory: libsignal-src/java
         run: ./gradlew --no-daemon :client:jar
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          distribution: 'graalvm'
+          java-version: '25'
+          cache: 'gradle'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build signal-cli native-image (arm64)
         env:
