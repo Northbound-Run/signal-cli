@@ -189,14 +189,58 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+
       - uses: graalvm/setup-graalvm@v1
         with:
           distribution: 'graalvm'
           java-version: '25'
           cache: 'gradle'
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build native-image (arm64)
-        run: ./gradlew --no-daemon nativeCompile
+
+      # Upstream libsignal-client only ships libsignal_jni_amd64.so in its
+      # Maven JAR — there's no Linux/aarch64 binary. Build libsignal's JNI
+      # for the host arch so the signal-cli native-image has a JNI library
+      # it can actually load at runtime.
+      - name: Install libsignal build toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang libclang-dev cmake make protobuf-compiler libprotobuf-dev python3 git
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Determine libsignal version
+        id: libsignal
+        run: |
+          ver=$(cat libsignal-version)
+          echo "version=${ver}" >> "$GITHUB_OUTPUT"
+
+      - name: Clone libsignal source
+        run: |
+          git clone --depth 1 \
+            --branch "v${{ steps.libsignal.outputs.version }}" \
+            https://github.com/signalapp/libsignal.git libsignal-src
+
+      - name: Build libsignal JNI for linux/aarch64
+        working-directory: libsignal-src
+        run: ./java/build_jni.sh desktop
+
+      - name: Build libsignal-client JAR (includes aarch64 .so)
+        working-directory: libsignal-src/java
+        run: ./gradlew --no-daemon :client:jar
+
+      - name: Build signal-cli native-image (arm64)
+        env:
+          LIBSIGNAL_VER: ${{ steps.libsignal.outputs.version }}
+        run: |
+          jar_path="$(pwd)/libsignal-src/java/client/build/libs/libsignal-client-${LIBSIGNAL_VER}.jar"
+          if [ ! -f "$jar_path" ]; then
+            echo "Expected libsignal JAR not found at $jar_path" >&2
+            ls -la libsignal-src/java/client/build/libs/ || true
+            exit 1
+          fi
+          ./gradlew --no-daemon nativeCompile \
+            "-Plibsignal_client_path=${jar_path}"
 
       - name: Compress native arm64 archive
         env:
