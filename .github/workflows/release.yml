@@ -31,6 +31,7 @@ jobs:
     outputs:
       signal_cli_version: ${{ steps.cli_ver.outputs.version }}
       release_id: ${{ steps.create_release.outputs.id }}
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
 
     steps:
 
@@ -175,6 +176,45 @@ jobs:
 #          asset_path: signal-cli-${{ steps.cli_ver.outputs.version }}-macOS.tar.gz
 #          asset_name: signal-cli-${{ steps.cli_ver.outputs.version }}-macOS.tar.gz
 #          asset_content_type: application/x-compressed-tar  # .tar.gz
+
+  # Native GraalVM build for linux/arm64. Upstream CI only produces an
+  # amd64 native-image, which forces Rosetta emulation on Apple Silicon
+  # and deadlocks libsignal's JNI during registration. Built on a native
+  # arm64 runner so the output binary runs unemulated on aarch64 hosts.
+  build-native-arm64:
+    needs: lib_to_jar
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          distribution: 'graalvm'
+          java-version: '25'
+          cache: 'gradle'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build native-image (arm64)
+        run: ./gradlew --no-daemon nativeCompile
+
+      - name: Compress native arm64 archive
+        env:
+          SIGNAL_CLI_VER: ${{ needs.lib_to_jar.outputs.signal_cli_version }}
+        run: |
+          chmod +x build/native/nativeCompile/signal-cli
+          tar -czf "signal-cli-${SIGNAL_CLI_VER}-Linux-native-aarch64.tar.gz" \
+            -C build/native/nativeCompile signal-cli
+
+      - name: Upload Linux native arm64 archive
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.lib_to_jar.outputs.upload_url }}
+          asset_path: signal-cli-${{ needs.lib_to_jar.outputs.signal_cli_version }}-Linux-native-aarch64.tar.gz
+          asset_name: signal-cli-${{ needs.lib_to_jar.outputs.signal_cli_version }}-Linux-native-aarch64.tar.gz
+          asset_content_type: application/x-compressed-tar
 
   build-container:
     needs: ci_wf
