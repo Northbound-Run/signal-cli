@@ -230,7 +230,9 @@ jobs:
 
       - name: Build libsignal-client JAR (includes aarch64 .so)
         working-directory: libsignal-src/java
-        run: ./gradlew --no-daemon :client:jar
+        # -PskipAndroid skips the :android subproject in settings.gradle,
+        # avoiding a spurious Android SDK requirement for a client-only build.
+        run: ./gradlew --no-daemon -PskipAndroid :client:jar
 
       - uses: graalvm/setup-graalvm@v1
         with:
