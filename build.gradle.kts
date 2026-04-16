@@ -8,7 +8,7 @@ plugins {
 
 allprojects {
     group = "org.asamk"
-    version = "0.14.2-ac.7"
+    version = "0.14.2-ac.8"
 }
 
 java {

@@ -272,6 +272,21 @@ jobs:
           asset_name: signal-cli-${{ needs.lib_to_jar.outputs.signal_cli_version }}-Linux-native-aarch64.tar.gz
           asset_content_type: application/x-compressed-tar
 
+      # Multi-arch libsignal-client JAR — same upstream JAR plus the freshly
+      # built libsignal_jni_aarch64.so as a resource. Downstream consumers
+      # (e.g. the agentchannels Dockerfile in JVM-distribution mode) drop
+      # this in over the upstream Maven JAR so signal-cli loads JNI on
+      # both linux/amd64 and linux/arm64 hosts.
+      - name: Upload libsignal-client multiarch JAR
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.lib_to_jar.outputs.upload_url }}
+          asset_path: libsignal-src/java/client/build/libs/libsignal-client-${{ steps.libsignal.outputs.version }}.jar
+          asset_name: libsignal-client-${{ steps.libsignal.outputs.version }}-multiarch.jar
+          asset_content_type: application/java-archive
+
   build-container:
     needs: ci_wf
     runs-on: ubuntu-latest
